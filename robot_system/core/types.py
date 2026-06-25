@@ -13,6 +13,7 @@ from core.system_clock import SystemClock
 class EventType(str, Enum):
     FACE_RECOGNIZED = "FACE_RECOGNIZED"
     FACE_UNKNOWN = "FACE_UNKNOWN"
+    FACE_DEPARTED = "FACE_DEPARTED"
     FACE_RAW_DETECTED = "FACE_RAW_DETECTED"
     NAV_REQUEST = "NAV_REQUEST"
     NAV_EXECUTE = "NAV_EXECUTE"
@@ -28,6 +29,7 @@ class EventType(str, Enum):
     TTS_REQUEST = "TTS_REQUEST"
     STATE_CHANGED = "STATE_CHANGED"
     ENROLL_CANDIDATE = "ENROLL_CANDIDATE"
+    FACE_CAPACITY_REPORT = "FACE_CAPACITY_REPORT"
     GREETING_COMPLETE = "GREETING_COMPLETE"
     FSM_TIMER_EXPIRED = "FSM_TIMER_EXPIRED"
 
@@ -128,6 +130,8 @@ class FaceRecord:
     created_at: float = field(default_factory=SystemClock.now)
     last_seen: float = 0.0
     confidence_threshold: float = 0.75
+    is_vip: bool = False
+    vip_level: str = "regular_customer"
 
 
 @dataclass

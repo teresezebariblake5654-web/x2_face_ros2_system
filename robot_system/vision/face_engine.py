@@ -13,18 +13,31 @@ from core.event_bus import EventBus
 from core.types import Event, EventType, Priority
 from utils.logger import get_logger
 from vision.face_db import FaceDB, _normalize
+from face_core.repository import FaceRepository
 
 logger = get_logger(__name__)
 
 
 class FaceEngine:
-    def __init__(self, bus: EventBus, face_db: FaceDB, interval: float = FACE_ENGINE_INTERVAL) -> None:
+    def __init__(
+        self,
+        bus: EventBus,
+        face_repo: FaceRepository | FaceDB,
+        interval: float = FACE_ENGINE_INTERVAL,
+    ) -> None:
         self._bus = bus
-        self._face_db = face_db
+        if isinstance(face_repo, FaceRepository):
+            self._repo = face_repo
+        else:
+            self._repo = FaceRepository(face_repo)
         self._interval = interval
         self._running = False
         self._thread: threading.Thread | None = None
         self._rng = np.random.default_rng()
+
+    @property
+    def is_alive(self) -> bool:
+        return self._running and self._thread is not None and self._thread.is_alive()
 
     def start(self) -> None:
         self._running = True
@@ -43,8 +56,8 @@ class FaceEngine:
             tick += 1
             is_known = random.random() < 0.6
             if is_known:
-                person_id = random.choice(self._face_db.list_known_ids())
-                embedding = self._face_db.get_embedding(person_id)
+                person_id = random.choice(self._repo.list_known_ids())
+                embedding = self._repo.get_embedding(person_id)
                 if embedding is None:
                     embedding = _normalize(self._rng.standard_normal(FACE_EMBEDDING_DIM).astype(np.float32))
                 noise = self._rng.normal(0, 0.02, size=embedding.shape).astype(np.float32)
@@ -59,7 +72,13 @@ class FaceEngine:
                     type=EventType.FACE_RAW_DETECTED,
                     source="face_engine",
                     priority=Priority.NORMAL,
-                    payload={"embedding": embedding, "simulated_known": is_known, "tick": tick},
+                    payload={
+                        "embedding": embedding,
+                        "simulated_known": is_known,
+                        "tick": tick,
+                        "in_welcome_zone": True,
+                        "person_count": 1,
+                    },
                 )
             )
             time.sleep(self._interval)

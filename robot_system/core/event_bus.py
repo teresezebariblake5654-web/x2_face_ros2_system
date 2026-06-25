@@ -122,6 +122,9 @@ class EventBus:
         self._running = False
         self._dispatcher.join(timeout=2.0)
 
+    def is_dispatcher_alive(self) -> bool:
+        return self._running and self._dispatcher.is_alive()
+
     @property
     def stats(self) -> dict:
         with self._lock:

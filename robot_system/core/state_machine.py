@@ -102,7 +102,7 @@ class StateMachine:
         if et == EventType.GREETING_COMPLETE and state == RobotState.GREETING:
             return RobotState.COOLDOWN
 
-        if et == EventType.NAV_REQUEST and state in (RobotState.IDLE, RobotState.COOLDOWN):
+        if et == EventType.NAV_REQUEST and state == RobotState.IDLE:
             return RobotState.NAVIGATION
 
         if et == EventType.NAV_STARTED and state in (RobotState.IDLE, RobotState.NAVIGATION):

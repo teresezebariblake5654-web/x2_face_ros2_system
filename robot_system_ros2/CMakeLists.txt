@@ -47,7 +47,9 @@ endforeach()
 install(
   DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../robot_system/
   DESTINATION share/${PROJECT_NAME}/robot_system
-  FILES_MATCHING PATTERN "*.py"
+  FILES_MATCHING
+  PATTERN "*.py"
+  PATTERN "*.yaml"
 )
 
 # Install launch files

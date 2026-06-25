@@ -14,6 +14,7 @@ EVENT_PRIORITY_MAP: dict[EventType, Priority] = {
     EventType.LLM_REQUEST: Priority.HIGH,
     EventType.FACE_RECOGNIZED: Priority.NORMAL,
     EventType.FACE_UNKNOWN: Priority.NORMAL,
+    EventType.FACE_DEPARTED: Priority.NORMAL,
     EventType.ACTION_REQUEST: Priority.NORMAL,
     EventType.TTS_REQUEST: Priority.NORMAL,
     EventType.FACE_RAW_DETECTED: Priority.NORMAL,
@@ -37,6 +38,7 @@ STATE_BLOCK_RULES: dict[RobotState, set[EventType]] = {
     RobotState.GREETING: {
         EventType.FACE_RECOGNIZED,
         EventType.FACE_UNKNOWN,
+        EventType.FACE_DEPARTED,
         EventType.NAV_REQUEST,
     },
     RobotState.ERROR: {

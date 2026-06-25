@@ -33,7 +33,7 @@ class _BridgingEventBus(EventBus):
         self._runtime = runtime
 
     def publish(self, event: Event) -> None:
-        if event.type in (EventType.FACE_RECOGNIZED, EventType.FACE_UNKNOWN):
+        if event.type in (EventType.FACE_RECOGNIZED, EventType.FACE_UNKNOWN, EventType.FACE_DEPARTED):
             self._runtime.update("last_face_time", time.monotonic())
             pid = event.payload.get("person_id")
             if pid:

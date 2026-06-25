@@ -11,16 +11,19 @@ import signal
 import sys
 import time
 
+from adapters.robot_sdk_adapter import RobotSDKAdapter
 from audio.llm_client import LLMClient
 from audio.tts_engine import TTSEngine
 from behavior.action_executor import ActionExecutor
-from config import FACE_ENGINE_INTERVAL
+from config import DEMO_MODE, FACE_ENGINE_INTERVAL
 from core.brain import RobotBrain
 from core.cooldown_manager import CooldownManager
 from core.event_bus import EventBus
+from core.health_monitor import HealthMonitor
 from core.state_machine import StateMachine
 from core.trace_logger import TraceLogger
 from core.types import Event, EventType, Priority
+from face_core.repository import FaceRepository
 from navigation.nav_client import NavClient
 from navigation.nav_controller import NavController
 from utils.logger import get_logger, setup_logging
@@ -35,23 +38,32 @@ class RobotSystem:
     def __init__(self) -> None:
         setup_logging()
         logger.info("=" * 60)
-        logger.info("Robot Greeting System — Industrial Refactor v2")
+        logger.info("Robot Greeting System — Commercial Deployment v3")
         logger.info("=" * 60)
 
         self._bus = EventBus()
         self._cooldowns = CooldownManager()
         self._state_machine = StateMachine(self._bus, self._cooldowns)
         self._register_consumers()
-        self._face_db = FaceDB()
 
-        self._face_engine = FaceEngine(self._bus, self._face_db)
-        self._recognition = RecognitionService(self._bus, self._face_db)
-        self._brain = RobotBrain(self._bus, self._state_machine, self._cooldowns)
-        self._action_executor = ActionExecutor(self._bus)
+        self._face_db = FaceDB()
+        self._face_repo = FaceRepository(self._face_db)
+        self._sdk = RobotSDKAdapter()
+
+        self._face_engine = FaceEngine(self._bus, self._face_repo)
+        self._recognition = RecognitionService(self._bus, self._face_repo)
+        self._brain = RobotBrain(
+            self._bus,
+            self._state_machine,
+            self._cooldowns,
+            face_repo=self._face_repo,
+        )
+        self._action_executor = ActionExecutor(self._bus, sdk=self._sdk)
         self._tts = TTSEngine(self._bus)
         self._llm = LLMClient(self._bus)
         self._nav_client = NavClient()
         self._nav_controller = NavController(self._bus, self._nav_client)
+        self._health = HealthMonitor(self._bus, self._action_executor, self._face_engine)
 
         self._running = False
 
@@ -59,12 +71,14 @@ class RobotSystem:
         self._bus.register_consumer("robot_brain", [
             EventType.FACE_RECOGNIZED,
             EventType.FACE_UNKNOWN,
+            EventType.FACE_DEPARTED,
             EventType.NAV_REQUEST,
             EventType.LLM_MESSAGE,
             EventType.SYSTEM_TICK,
             EventType.NAV_STARTED,
             EventType.NAV_COMPLETED,
             EventType.NAV_FAILED,
+            EventType.ACTION_FAILED,
             EventType.ENROLL_CANDIDATE,
             EventType.STATE_CHANGED,
             EventType.FSM_TIMER_EXPIRED,
@@ -84,9 +98,13 @@ class RobotSystem:
         self._recognition.start()
         self._brain.start()
         self._face_engine.start()
+        self._health.start()
         self._running = True
-        logger.info("All subsystems online. Face interval=%.1fs", FACE_ENGINE_INTERVAL)
-        self._schedule_demo_nav(delay=10.0)
+        logger.info("All subsystems online. Face interval=%.1fs DEMO_MODE=%s", FACE_ENGINE_INTERVAL, DEMO_MODE)
+        if DEMO_MODE:
+            self._schedule_demo_nav(delay=10.0)
+        else:
+            logger.info("Demo navigation disabled (set ROBOT_DEMO_MODE=1 to enable)")
 
     def _schedule_demo_nav(self, delay: float) -> None:
         import threading
@@ -110,6 +128,7 @@ class RobotSystem:
     def stop(self) -> None:
         logger.info("Shutting down...")
         self._running = False
+        self._health.stop()
         self._face_engine.stop()
         self._brain.stop()
         self._recognition.stop()

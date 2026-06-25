@@ -5,12 +5,15 @@ from __future__ import annotations
 from typing import Optional
 
 from behavior.dialog_policy import DialogPolicy
+from behavior.farewell_policy import FarewellPolicy
 from behavior.greeting_policy import GreetingPolicy
 from behavior.nav_policy import NavPolicy
 from core.policy_types import DeferredNav, PolicyCommand, PolicyOutcome
 from core.state_machine import StateMachine
 from core.trace_logger import TraceLogger
 from core.types import Event, EventType, NavResult, RobotState
+from face_core.repository import FaceRepository
+from policy.welcome_policy import WelcomePolicy
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -22,9 +25,16 @@ class PolicyLayer:
     Contains NO execution — only decisions.
     """
 
-    def __init__(self, state_machine: StateMachine) -> None:
+    def __init__(
+        self,
+        state_machine: StateMachine,
+        face_repo: Optional[FaceRepository] = None,
+    ) -> None:
         self._sm = state_machine
-        self._greeting = GreetingPolicy()
+        repo = face_repo or FaceRepository()
+        welcome = WelcomePolicy()
+        self._greeting = GreetingPolicy(repo, welcome)
+        self._farewell = FarewellPolicy(welcome)
         self._nav = NavPolicy()
         self._dialog = DialogPolicy()
         self._trace = TraceLogger.get()
@@ -42,6 +52,9 @@ class PolicyLayer:
     def set_pending_nav(self, action: str, location: str, trace_id: str) -> None:
         self._pending_nav = DeferredNav(action, location, trace_id)
 
+    def set_sales_engaged(self, engaged: bool) -> None:
+        self._greeting._throttle.set_sales_engaged(engaged)
+
     def evaluate(self, event: Event, category: str) -> PolicyOutcome:
         self._trace.log_lifecycle(event.trace_id, "POLICY", "EVAL", category)
         state = self._sm.state
@@ -50,6 +63,8 @@ class PolicyLayer:
             return self._greeting.known_face(event, state, self._sm.can_greet())
         if category == "face_unknown":
             return self._greeting.unknown_face(event, state, self._sm.can_greet())
+        if category == "face_departed":
+            return self._farewell.departed(event, state)
         if category == "navigation":
             return self._nav.request(event, state, self._sm.can_navigate())
         if category == "dialog":

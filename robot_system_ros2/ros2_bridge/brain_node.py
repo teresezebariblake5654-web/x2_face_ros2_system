@@ -29,10 +29,9 @@ from utils.logger import get_logger, setup_logging  # noqa: E402
 
 logger = get_logger(__name__)
 
-FACE_IDLE_TIMEOUT = 3.0
 ACTION_RESPONSE_TIMEOUT = 2.0
 ACTION_FAILURE_SAFE_THRESHOLD = 3
-SAFE_RECOVERY_TTS = "system recovering"
+SAFE_RECOVERY_TTS = "系统正在恢复，请稍候。"
 
 _NAV_EVENT_TYPES: FrozenSet[EventType] = frozenset({
     EventType.NAV_REQUEST,
@@ -122,6 +121,9 @@ class BrainNode(Node):
         self.create_subscription(
             String, "/node_heartbeat", self._on_node_heartbeat, QoSProfiles.COMMANDS
         )
+        self.create_subscription(
+            String, "/robot_sales_engaged", self._on_sales_engaged, QoSProfiles.COMMANDS
+        )
 
         safe_call(self, self._brain.start)
         self.create_timer(BRAIN_TICK_INTERVAL, self._spin_tick)
@@ -130,6 +132,19 @@ class BrainNode(Node):
 
     def _on_node_heartbeat(self, msg: String) -> None:
         self._watchdog.record_heartbeat(msg.data)
+
+    def _on_sales_engaged(self, msg: String) -> None:
+        safe_call(self, self._apply_sales_engaged, msg)
+
+    def _apply_sales_engaged(self, msg: String) -> None:
+        try:
+            data = json.loads(msg.data)
+        except json.JSONDecodeError:
+            self.get_logger().warning("Invalid /robot_sales_engaged payload")
+            return
+        engaged = bool(data.get("engaged", data.get("sales_engaged", False)))
+        self._brain.set_sales_engaged(engaged)
+        self.get_logger().info("Sales engaged mode: %s", engaged)
 
     def _mode_allows_event(self, event: Event) -> bool:
         mode = self._mode
@@ -145,7 +160,7 @@ class BrainNode(Node):
                 return False
             if et == EventType.FACE_RECOGNIZED:
                 return True
-            if et == EventType.TTS_REQUEST:
+            if et in (EventType.FACE_DEPARTED, EventType.TTS_REQUEST):
                 return True
             return et in _FSM_LIFECYCLE_TYPES
 
@@ -193,6 +208,7 @@ class BrainNode(Node):
         self._bus.register_consumer("robot_brain", [
             EventType.FACE_RECOGNIZED,
             EventType.FACE_UNKNOWN,
+            EventType.FACE_DEPARTED,
             EventType.NAV_REQUEST,
             EventType.LLM_MESSAGE,
             EventType.SYSTEM_TICK,
@@ -294,11 +310,6 @@ class BrainNode(Node):
 
         if self._mode == SystemMode.SAFE:
             return
-
-        if now - self._last_face_time > FACE_IDLE_TIMEOUT:
-            if self._runtime.get("current_fsm_state") != "IDLE":
-                self._runtime.update("current_fsm_state", "IDLE")
-                self.get_logger().debug("Watchdog: IDLE fallback (no face 3s)")
 
         for trace_id, info in list(self._pending_actions.items()):
             if now - info["time"] <= ACTION_RESPONSE_TIMEOUT:

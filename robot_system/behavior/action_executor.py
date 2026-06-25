@@ -1,11 +1,13 @@
-"""Unified action executor — queue, lock, timeout."""
+"""Unified action executor — queue, lock, timeout, SDK adapter."""
 
 from __future__ import annotations
 
 import queue
 import threading
 import time
+from typing import Optional
 
+from adapters.robot_sdk_adapter import RobotSDKAdapter
 from config import ACTION_QUEUE_MAX, ACTION_TIMEOUT
 from behavior.gesture import GESTURE_CATALOG, describe
 from core.event_bus import EventBus
@@ -18,10 +20,15 @@ logger = get_logger(__name__)
 
 
 class ActionExecutor:
-    """Serializes gestures via queue + lock; enforces per-action timeout."""
+    """Serializes gestures via queue + lock; routes all motion to RobotSDKAdapter."""
 
-    def __init__(self, bus: EventBus) -> None:
+    def __init__(
+        self,
+        bus: EventBus,
+        sdk: Optional[RobotSDKAdapter] = None,
+    ) -> None:
         self._bus = bus
+        self._sdk = sdk or RobotSDKAdapter()
         self._trace = TraceLogger.get()
         self._running = False
         self._ingress_thread: threading.Thread | None = None
@@ -29,6 +36,13 @@ class ActionExecutor:
         self._action_queue: queue.Queue[Event] = queue.Queue(maxsize=ACTION_QUEUE_MAX)
         self._lock = threading.Lock()
         self._current: Event | None = None
+
+    @property
+    def is_alive(self) -> bool:
+        if not self._running:
+            return False
+        threads = (self._ingress_thread, self._worker_thread)
+        return all(t is not None and t.is_alive() for t in threads)
 
     def start(self) -> None:
         self._running = True
@@ -131,13 +145,13 @@ class ActionExecutor:
         )
 
     def wave(self) -> None:
-        logger.info("[Action] >>> wave()")
+        self._sdk.wave()
 
     def turn_head(self, angle: float = 30) -> None:
-        logger.info("[Action] >>> turn_head(%.1f°)", angle)
+        self._sdk.turn_head(angle)
 
     def question_mark(self) -> None:
-        logger.info("[Action] >>> question_mark()")
+        self._sdk.point("question")
 
     def point(self, target: str = "forward") -> None:
-        logger.info("[Action] >>> point(%s)", target)
+        self._sdk.point(target)

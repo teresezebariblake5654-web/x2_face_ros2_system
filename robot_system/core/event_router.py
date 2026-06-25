@@ -29,6 +29,7 @@ class EventRouter:
     _CATEGORY_MAP = {
         EventType.FACE_RECOGNIZED: "face_known",
         EventType.FACE_UNKNOWN: "face_unknown",
+        EventType.FACE_DEPARTED: "face_departed",
         EventType.NAV_REQUEST: "navigation",
         EventType.LLM_MESSAGE: "dialog",
         EventType.NAV_STARTED: "nav_lifecycle",
